@@ -62,6 +62,32 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Inspect Kotlin compile error context
+        working-directory: project
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name, needles in [
+              ("app/src/main/java/com/controlpanel/next/MainActivity.kt", ["ACTION_BRIGHTNESS"]),
+              ("app/src/main/java/com/controlpanel/next/hooks/SystemUiHook.kt", ["AndroidAppHelper"]),
+              ("app/build.gradle.kts", ["dependencies", "xposed"]),
+          ]:
+              p = Path(name)
+              print(f"\\n===== {name} =====")
+              if not p.exists():
+                  print("FILE NOT FOUND")
+                  continue
+              lines = p.read_text().splitlines()
+              shown = set()
+              for needle in needles:
+                  for i, line in enumerate(lines):
+                      if needle.lower() in line.lower():
+                          for j in range(max(0, i-8), min(len(lines), i+9)):
+                              if j not in shown:
+                                  print(f"{j+1}: {lines[j]}")
+                                  shown.add(j)
+          PY
+
       - name: Build user and developer APKs
         working-directory: project
         run: gradle --no-daemon :app:assembleUserDebug :app:assembleDeveloperDebug
