@@ -1,0 +1,87 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ControlPanelNext.zip'
+      - '.github/workflows/android-build.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify and extract source archive
+        run: |
+          test -s ControlPanelNext.zip
+          unzip -t ControlPanelNext.zip
+          mkdir -p project
+          unzip -q ControlPanelNext.zip -d project
+          test -f project/settings.gradle.kts
+          test -f project/tools_review.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Review source
+        working-directory: project
+        run: python3 tools_review.py
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build user and developer APKs
+        working-directory: project
+        run: gradle --no-daemon :app:assembleUserDebug :app:assembleDeveloperDebug
+
+      - name: Verify APK outputs
+        working-directory: project
+        run: |
+          test -s app/build/outputs/apk/user/debug/app-user-debug.apk
+          test -s app/build/outputs/apk/developer/debug/app-developer-debug.apk
+
+      - name: Upload user APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControlPanelNext-user-debug
+          path: project/app/build/outputs/apk/user/debug/app-user-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload developer APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControlPanelNext-developer-debug
+          path: project/app/build/outputs/apk/developer/debug/app-developer-debug.apk
+          if-no-files-found: error
+          retention-days: 14
